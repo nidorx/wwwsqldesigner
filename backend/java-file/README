@@ -1,0 +1,26 @@
+
+Build
+======
+
+Windows
+-------
+C:/dev/jsweet/infra/jdk1.8.0_45/bin/javac.exe JavaFile.java
+C:/dev/jsweet/infra/jdk1.8.0_45/bin/jar.exe cmf ./MANIFEST.MF java-file.jar ./*.class
+
+
+Unix
+-------
+javac ./JavaFile.java
+jar cmf ./MANIFEST.MF java-file.jar ./*.class
+
+
+Run
+======
+
+Windows
+-------
+C:/dev/jsweet/infra/jdk1.8.0_45/bin/java.exe -jar ./java-file.jar
+
+Unix
+-------
+java -jar ./java-file.jar
