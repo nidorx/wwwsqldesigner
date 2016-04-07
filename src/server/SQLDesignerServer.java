@@ -46,7 +46,7 @@ public class SQLDesignerServer {
 
     private static final Logger logger = Logger.getLogger("www-sql");
 
-    // real path of jar file
+    // Real path of jar file
     private static final String REAL_BASE_PATH;
 
     private static long LAST_MODIFIED_TIME = (new Date()).getTime();

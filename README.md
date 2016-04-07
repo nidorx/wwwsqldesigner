@@ -23,7 +23,7 @@ If you wish to support this project, <a href='https://www.paypal.com/cgi-bin/web
 # Build
 ```
 javac -d ./build ./src/server/*.java
-jar cvmf ./src/server/MANIFEST.MF ./dist/www-sql-designer-3.0.0.jar -C build/ . -C src/ web/
+jar cvmf ./src/server/MANIFEST.MF ./dist/www-sql-designer-3.0.0.jar -C build/ . -C src/ web/ ./LICENSE.txt
 ```
 
 #Run
