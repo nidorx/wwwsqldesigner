@@ -1,3 +1,6 @@
-/nbproject/private/
 **/*.class
-/nbproject/
+**/nbproject/
+/src/build/
+/src/dist/
+/dist/data/
+/dist/backup/
