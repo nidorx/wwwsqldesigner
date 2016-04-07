@@ -2,5 +2,8 @@
 **/nbproject/
 /src/build/
 /src/dist/
-/dist/data/
-/dist/backup/
+/build/*
+/dist/*.log
+/dist/*.lck
+/dist/diagrams/
+/dist/snapshots/

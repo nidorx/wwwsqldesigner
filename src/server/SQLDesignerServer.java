@@ -10,6 +10,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
@@ -23,10 +24,13 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.XMLReader;
@@ -39,7 +43,32 @@ import org.xml.sax.helpers.XMLReaderFactory;
  */
 public class SQLDesignerServer {
 
-    private static final Logger LOG = Logger.getLogger(SQLDesignerServer.class.getName());
+    private static final Logger logger = Logger.getLogger("www-sql");
+
+    static {
+        // Default language for output
+        Locale.setDefault(new Locale("en", "US"));
+
+        // Logger formating
+        System.setProperty(
+                "java.util.logging.SimpleFormatter.format",
+                "%1$tY-%1$tm-%1$td %1$tH:%1$tM:%1$tS %4$-6s %5$s%6$s%n"
+        );
+
+        // Log to file
+        try {
+            final FileHandler logfile = new FileHandler(Paths.get(getJarPath(), "/www-sql-designer.log").toString());
+            logfile.setFormatter(new SimpleFormatter());
+            logger.addHandler(logfile);
+        } catch (IOException | URISyntaxException | SecurityException ex) {
+            logger.log(Level.SEVERE, "Unable to create logfile", ex);
+        }
+
+        // Allows debug
+        if (System.getProperty("debug") != null) {
+            logger.setLevel(Level.ALL);
+        }
+    }
 
     /**
      * Starts SQLDesignerServer
@@ -49,48 +78,42 @@ public class SQLDesignerServer {
      * @throws URISyntaxException
      */
     public static void main(String[] args) throws IOException, URISyntaxException {
-        final WebServer webServer = new WebServer();
-        webServer.start();
+        new WebServer().start();
     }
 
     /**
-     * Representa os servidor web
+     * Server all static content and API endpoints
      */
     private static class WebServer implements HttpHandler {
 
-        private static final Set<String> MODELS_LIST = new HashSet<>();
+        private static final Set<String> diagramsList = new HashSet<>();
 
-        private static Path MODELS_DIR;
+        private static Path diagramsPath;
 
-        private static Path BACKUP_DIR;
+        private static Path snapshotsPath;
 
-        static {
-            try {
-                final Path jarPath = Paths.get(SQLDesignerServer.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-                MODELS_DIR = Paths.get(jarPath.getParent().toString(), "/data");
-                BACKUP_DIR = Paths.get(jarPath.getParent().toString(), "/backup");
+        public WebServer() throws URISyntaxException, IOException {
+            final String jarPath = getJarPath();
+            diagramsPath = Paths.get(jarPath, "/diagrams");
+            snapshotsPath = Paths.get(jarPath, "/snapshots");
 
-                LOG.log(Level.INFO, "DATA_DIR is now {0}", MODELS_DIR);
+            // Create diagrams directory (if not exists)
+            Files.createDirectories(diagramsPath);
 
-                // Create data directory
-                Files.createDirectories(MODELS_DIR);
+            // Create snapthots directory (if not exists)
+            Files.createDirectories(snapshotsPath);
 
-                // Create data bakcup directory
-                Files.createDirectories(BACKUP_DIR);
+            logger.log(Level.INFO, "Diagram path: {0}", diagramsPath);
+            logger.log(Level.INFO, "Snapshots path: {0}", diagramsPath);
 
-                // Copy default model
-                saveModelContent("default", Resources.getContent("/db/default"));
-            } catch (IOException | URISyntaxException ex) {
-                LOG.log(Level.SEVERE, null, ex);
-                System.exit(-1);
-            }
+            // Create default diagram
+            saveDiagramContent("default", WebResources.getContent("/db/default"));
 
+            // Generate a list of all diagrams
+            updateModelsList();
         }
 
         public void start() throws IOException, URISyntaxException {
-            //
-            updateModelsList();
-
             // Initialize server
             HttpServer server = HttpServer.create(new InetSocketAddress(8000), 0);
             server.createContext("/", this);
@@ -111,7 +134,7 @@ public class SQLDesignerServer {
                 }
 
             } catch (Exception ex) {
-                LOG.log(Level.SEVERE, "Erro inesperado", ex);
+                logger.log(Level.SEVERE, "An unexpected error has occurred", ex);
 
                 final StringWriter sw = new StringWriter();
                 ex.printStackTrace(new PrintWriter(sw));
@@ -126,7 +149,7 @@ public class SQLDesignerServer {
                     statusCode = HttpURLConnection.HTTP_INTERNAL_ERROR;
                 }
 
-                he.getResponseHeaders().add("Content-type", Resources.getContentType("null.txt"));
+                he.getResponseHeaders().add("Content-type", WebResources.getContentType("null.txt"));
                 he.sendResponseHeaders(statusCode, stack.length);
                 try (final OutputStream os = he.getResponseBody()) {
                     os.write(stack);
@@ -134,7 +157,6 @@ public class SQLDesignerServer {
             } finally {
                 he.close();
             }
-
         }
 
         private void handleStaticContent(final HttpExchange he) throws IOException, NotFoundException {
@@ -142,9 +164,9 @@ public class SQLDesignerServer {
             if (path.equals("/")) {
                 path = "/index.html";
             }
-            if (Resources.exists(path)) {
-                final byte[] bytes = Resources.getContent(path);
-                he.getResponseHeaders().add("Content-type", Resources.getContentType(path));
+            if (WebResources.exists(path)) {
+                final byte[] bytes = WebResources.getContent(path);
+                he.getResponseHeaders().add("Content-type", WebResources.getContentType(path));
                 he.sendResponseHeaders(HttpURLConnection.HTTP_OK, bytes.length);
                 try (final OutputStream os = he.getResponseBody()) {
                     os.write(bytes);
@@ -160,22 +182,28 @@ public class SQLDesignerServer {
             final String name = params.get("keyword");
             switch (action) {
                 case "list":
-                    listModels(he);
+                    doListModels(he);
                     break;
                 case "save":
-                    saveModel(he, validateAndSanitizeKeyword(name));
+                    if (name == null) {
+                        throw new BadRequestException("QueryParam 'keyword' is required");
+                    }
+                    doSaveDiagram(he, sanitizeDiagramName(name));
                     break;
                 case "load":
-                    loadModel(he, validateAndSanitizeKeyword(name));
+                    if (name == null) {
+                        throw new BadRequestException("QueryParam 'keyword' is required");
+                    }
+                    doLoadModel(he, sanitizeDiagramName(name));
                     break;
                 default:
                     he.sendResponseHeaders(HttpURLConnection.HTTP_NOT_IMPLEMENTED, 0);
             }
         }
 
-        private void listModels(final HttpExchange he) throws IOException {
+        private void doListModels(final HttpExchange he) throws IOException {
             final StringBuilder sb = new StringBuilder();
-            for (final String file : MODELS_LIST) {
+            for (final String file : diagramsList) {
                 sb.append(file).append("\n");
             }
 
@@ -186,8 +214,8 @@ public class SQLDesignerServer {
             }
         }
 
-        private void loadModel(final HttpExchange he, final String name) throws IOException {
-            final Path filePath = MODELS_DIR.resolve("./" + name);
+        private void doLoadModel(final HttpExchange he, final String name) throws IOException {
+            final Path filePath = diagramsPath.resolve("./" + name);
             if (Files.exists(filePath)) {
                 he.getResponseHeaders().add("Content-type", "text/xml");
 
@@ -201,36 +229,33 @@ public class SQLDesignerServer {
             }
         }
 
-        private void saveModel(final HttpExchange he, final String name) throws IOException, SAXException {
+        private void doSaveDiagram(final HttpExchange he, final String name) throws IOException, SAXException {
             final String xml = validateAndCompactXml(he.getRequestBody());
-            saveModelContent(name, xml.getBytes());
+            saveDiagramContent(name, xml.getBytes());
         }
 
-        private static void saveModelContent(final String name, final byte[] content) throws IOException {
-            final Path modelPath = Paths.get(MODELS_DIR.toString(), "/" + name);
+        private static void saveDiagramContent(final String name, final byte[] content) throws IOException {
+            final Path modelPath = Paths.get(diagramsPath.toString(), "/" + name);
             if (Files.exists(modelPath)) {
                 // Check for update
                 final byte[] oldContent = Files.readAllBytes(modelPath);
                 if (Arrays.equals(oldContent, content)) {
-                    LOG.log(Level.INFO, "Model doesnt have change, ignore saving: {0}", modelPath);
+                    logger.log(Level.INFO, "Diagram doesnt have change: {0}", modelPath);
                     return;
                 }
 
                 // Make a backup
-                final Path bakcupPath = Paths.get(BACKUP_DIR.toString(), "/" + name + "__" + (new Date()).getTime());
+                final Path bakcupPath = Paths.get(snapshotsPath.toString(), "/" + name + "__" + (new Date()).getTime());
                 Files.write(bakcupPath, oldContent);
-                LOG.log(Level.INFO, "Model backup created: {0}", bakcupPath);
+                logger.log(Level.INFO, "Diagram snapshot created: {0}", bakcupPath);
             }
 
             // Saving
             Files.write(modelPath, content);
-            LOG.log(Level.INFO, "Model saved: {0}", modelPath);
+            logger.log(Level.INFO, "Diagram saved: {0}", modelPath);
         }
 
-        private static String validateAndSanitizeKeyword(final String name) throws Exception {
-            if (name == null) {
-                throw new BadRequestException("QueryParam 'keyword' is required");
-            }
+        private static String sanitizeDiagramName(final String name) throws Exception {
             return name.replaceAll("[^a-zA-Z0-9_-]", "");
         }
 
@@ -267,12 +292,12 @@ public class SQLDesignerServer {
         private static void updateModelsList() throws IOException, URISyntaxException {
 
             final PathMatcher pathMatcher = FileSystems.getDefault().getPathMatcher("glob:**/*");
-            Files.walkFileTree(MODELS_DIR, new SimpleFileVisitor<Path>() {
+            Files.walkFileTree(diagramsPath, new SimpleFileVisitor<Path>() {
 
                 @Override
                 public FileVisitResult visitFile(Path path, BasicFileAttributes attrs) throws IOException {
                     if (pathMatcher.matches(path)) {
-                        MODELS_LIST.add(path.getFileName().toString());
+                        diagramsList.add(path.getFileName().toString());
                     }
                     return FileVisitResult.CONTINUE;
                 }
@@ -287,32 +312,32 @@ public class SQLDesignerServer {
     }
 
     /**
-     *
+     * Manage web resources
      */
-    private static class Resources {
+    private static class WebResources {
 
         private static final Set<String> exists = new HashSet<>();
 
-        private static final Map<String, String> MIME_TYPES = new HashMap<>();
+        private static final Map<String, String> mimeTypes = new HashMap<>();
 
         static {
-            MIME_TYPES.put("txt", "text/plain");
-            MIME_TYPES.put("css", "text/css");
-            MIME_TYPES.put("html", "text/html");
-            MIME_TYPES.put("json", "application/json");
-            MIME_TYPES.put("xml", "application/xml");
-            MIME_TYPES.put("xsl", "application/xml");
-            MIME_TYPES.put("js", "application/javascript");
-            MIME_TYPES.put("jpg", "image/jpeg");
-            MIME_TYPES.put("png", "image/png");
-            MIME_TYPES.put("gif", "image/gif");
+            mimeTypes.put("txt", "text/plain");
+            mimeTypes.put("css", "text/css");
+            mimeTypes.put("html", "text/html");
+            mimeTypes.put("json", "application/json");
+            mimeTypes.put("xml", "application/xml");
+            mimeTypes.put("xsl", "application/xml");
+            mimeTypes.put("js", "application/javascript");
+            mimeTypes.put("jpg", "image/jpeg");
+            mimeTypes.put("png", "image/png");
+            mimeTypes.put("gif", "image/gif");
         }
 
         public static boolean exists(final String path) {
             if (exists.contains(path)) {
                 return true;
             }
-            final InputStream is = Resources.class.getResourceAsStream(("/web/" + path).replaceAll("[/]+", "/"));
+            final InputStream is = WebResources.class.getResourceAsStream(("/web/" + path).replaceAll("[/]+", "/"));
             if (is != null) {
                 exists.add(path);
                 return true;
@@ -322,7 +347,7 @@ public class SQLDesignerServer {
 
         public static byte[] getContent(final String path) throws IOException {
             ByteArrayOutputStream os;
-            try (InputStream is = Resources.class.getResourceAsStream(("/web/" + path).replaceAll("[/]+", "/"))) {
+            try (InputStream is = WebResources.class.getResourceAsStream(("/web/" + path).replaceAll("[/]+", "/"))) {
                 os = new ByteArrayOutputStream();
                 byte[] buffer = new byte[1024];
                 int line;
@@ -337,12 +362,11 @@ public class SQLDesignerServer {
 
         private static String getContentType(final String path) {
             final String type = path.replaceAll("^(.*).(css|jpg|png|gif|html|js|xml|xsl)$", "$2");
-            if (MIME_TYPES.containsKey(type)) {
-                return MIME_TYPES.get(type);
+            if (mimeTypes.containsKey(type)) {
+                return mimeTypes.get(type);
             }
-            return MIME_TYPES.get("txt");
+            return mimeTypes.get("txt");
         }
-
     }
 
     private static class BadRequestException extends Exception {
@@ -354,6 +378,18 @@ public class SQLDesignerServer {
 
     private static class NotFoundException extends Exception {
 
+    }
+
+    /**
+     * Return real path of jar file
+     *
+     * @return
+     * @throws URISyntaxException
+     */
+    private static String getJarPath() throws URISyntaxException {
+        final URI thatClassUri
+                = SQLDesignerServer.class.getProtectionDomain().getCodeSource().getLocation().toURI();
+        return Paths.get(thatClassUri).getParent().toString();
     }
 
 }

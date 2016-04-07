@@ -31,3 +31,9 @@ jar cvmf ./src/server/MANIFEST.MF ./dist/www-sql-designer-3.0.0.jar -C build/ . 
 
 ## Windows
 java -jar ./dist/www-sql-designer-3.0.0.jar
+
+
+
+C:/dev/jsweet/infra/jdk1.8.0_45/bin/javac -d ./build ./src/server/*.java
+C:/dev/jsweet/infra/jdk1.8.0_45/bin/jar cvmf ./src/server/MANIFEST.MF ./dist/www-sql-designer-3.0.0.jar -C build/ . -C src/ web/
+C:/dev/jsweet/infra/jdk1.8.0_45/bin/java -jar ./dist/www-sql-designer-3.0.0.jar

@@ -1,0 +1,18 @@
+2016-04-07 11:25:26 INFO   Diagram path: C:\Users\arsilva4\Desktop\wwwsqldesigner\dist\data
+2016-04-07 11:25:26 INFO   Snapshots path: C:\Users\arsilva4\Desktop\wwwsqldesigner\dist\data
+2016-04-07 11:25:26 INFO   Model doesnt have change, ignore saving: C:\Users\arsilva4\Desktop\wwwsqldesigner\dist\data\default
+2016-04-07 11:25:36 SEVERE Erro inesperado
+SQLDesignerServer$NotFoundException
+	at SQLDesignerServer$WebServer.handleStaticContent(SQLDesignerServer.java:174)
+	at SQLDesignerServer$WebServer.handle(SQLDesignerServer.java:131)
+	at com.sun.net.httpserver.Filter$Chain.doFilter(Filter.java:79)
+	at sun.net.httpserver.AuthFilter.doFilter(AuthFilter.java:83)
+	at com.sun.net.httpserver.Filter$Chain.doFilter(Filter.java:82)
+	at sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(ServerImpl.java:675)
+	at com.sun.net.httpserver.Filter$Chain.doFilter(Filter.java:79)
+	at sun.net.httpserver.ServerImpl$Exchange.run(ServerImpl.java:647)
+	at sun.net.httpserver.ServerImpl$DefaultExecutor.execute(ServerImpl.java:158)
+	at sun.net.httpserver.ServerImpl$Dispatcher.handle(ServerImpl.java:431)
+	at sun.net.httpserver.ServerImpl$Dispatcher.run(ServerImpl.java:396)
+	at java.lang.Thread.run(Thread.java:745)
+
