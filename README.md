@@ -1,6 +1,6 @@
 # WWW SQL Designer
 
-[![WWW SQL Designer](https://raw.githubusercontent.com/nidorx/wwwsqldesigner/master/src/web/assets/images/screen.png)]
+![WWW SQL Designer](https://raw.githubusercontent.com/nidorx/wwwsqldesigner/master/src/web/assets/images/screen.png)
 
 WWW SQL Designer allows users to create database designs, which can be saved/loaded and exported to SQL scripts. Various databases and languages are supported. Ability to import existing database design.
 
