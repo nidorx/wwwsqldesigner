@@ -186,7 +186,7 @@ public class SQLDesignerServer {
                     os.write(bytes);
                 }
             } else {
-                throw new NotFoundException();
+                throw new NotFoundException("Static file does not exist: '" + path + "'");
             }
         }
 
@@ -392,6 +392,9 @@ public class SQLDesignerServer {
 
     private static class NotFoundException extends Exception {
 
+        private NotFoundException(final String message) {
+            super(message);
+        }
     }
 
     /**
