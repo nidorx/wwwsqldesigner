@@ -2,6 +2,7 @@
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import java.awt.HeadlessException;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -29,9 +30,15 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.FileHandler;
+import java.util.logging.Handler;
 import java.util.logging.Level;
+import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
+import javax.swing.JFrame;
+import static javax.swing.JFrame.EXIT_ON_CLOSE;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.XMLReader;
@@ -101,11 +108,30 @@ public class SQLDesignerServer {
      * Starts SQLDesignerServer
      *
      * @param args
-     * @throws IOException
-     * @throws URISyntaxException
      */
-    public static void main(String[] args) throws IOException, URISyntaxException {
-        new WebServer().start();
+    public static void main(String[] args) {
+        // java -jar -Dport=8000
+        final String portProperty = System.getProperty("port");
+        final String port;
+        if (portProperty != null) {
+            port = portProperty;
+        } else {
+            port = "8000";
+        }
+
+        // Starts window server logger
+        ServerWindowLogger.start();
+
+        // Starts web server
+        try {
+            new WebServer().start(port);
+        } catch (IOException | URISyntaxException ex) {
+            logger.log(Level.SEVERE, "Unable to start web server", ex);
+            System.exit(-1);
+        }
+
+        // Open desktop browser
+        openDesktopBrowser("http://localhost:" + port);
     }
 
     /**
@@ -139,15 +165,7 @@ public class SQLDesignerServer {
             updateModelsList();
         }
 
-        public void start() throws IOException, URISyntaxException {
-            // java -jar -Dport=8000
-            final String portProperty = System.getProperty("port");
-            final String port;
-            if (portProperty != null) {
-                port = portProperty;
-            } else {
-                port = "8000";
-            }
+        public void start(final String port) throws IOException, URISyntaxException {
 
             logger.log(Level.INFO, "Starting server: http://localhost:{0}", port);
 
@@ -419,6 +437,99 @@ public class SQLDesignerServer {
 
         private NotFoundException(final String message) {
             super(message);
+        }
+    }
+
+    /**
+     *
+     */
+    private static class ServerWindowLogger extends JFrame {
+
+        private final JTextArea textarea;
+
+        private ServerWindowLogger() throws HeadlessException {
+            super("WWW SQL Designer Server");
+
+            textarea = new JTextArea();
+            textarea.setEditable(false);
+            add(new JScrollPane(textarea));
+
+            setSize(800, 300);
+            setVisible(true);
+            setDefaultCloseOperation(EXIT_ON_CLOSE);
+        }
+
+        public void appendMessage(final String data) {
+            textarea.append(data);
+            this.validate();
+        }
+
+        public static void start() {
+            final ServerWindowLogger window = new ServerWindowLogger();
+            final Handler handler = new Handler() {
+                @Override
+                public void publish(LogRecord record) {
+                    if (isLoggable(record)) {
+                        window.appendMessage(getFormatter().format(record));
+                    }
+                }
+
+                @Override
+                public void flush() {
+                }
+
+                @Override
+                public void close() throws SecurityException {
+                }
+            };
+
+            handler.setFormatter(new SimpleFormatter());
+
+            logger.addHandler(handler);
+
+            handler.publish(new LogRecord(Level.INFO, "Close this window to stop server\n"));
+        }
+
+    }
+
+    /**
+     * Show server in user browser
+     *
+     * @param url
+     */
+    private static void openDesktopBrowser(final String url) {
+        final String os = System.getProperty("os.name").toLowerCase();
+        final Runtime rt = Runtime.getRuntime();
+        try {
+            if (os.contains("win")) {
+                // this doesn't support showing urls in the form of "page.html#nameLink"
+                rt.exec("rundll32 url.dll,FileProtocolHandler " + url);
+
+            } else if (os.contains("mac")) {
+
+                rt.exec("open " + url);
+
+            } else if (os.contains("nix") || os.contains("nux")) {
+
+                // Do a best guess on unix until we get a platform independent way
+                // Build a list of browsers to try, in this order.
+                String[] browsers = {
+                    "epiphany", "firefox", "mozilla", "konqueror", "netscape", "opera", "links", "lynx"
+                };
+
+                // Build a command string which looks like "browser1 "url" || browser2 "url" ||..."
+                StringBuilder cmd = new StringBuilder();
+                for (int i = 0; i < browsers.length; i++) {
+                    cmd
+                            .append(i == 0 ? "" : " || ")
+                            .append(browsers[i])
+                            .append(" \"").append(url).append("\" ");
+                }
+
+                rt.exec(new String[]{"sh", "-c", cmd.toString()});
+            }
+        } catch (final Exception ex) {
+            logger.log(Level.WARNING, "Unable do open desktop browser", ex);
         }
     }
 
