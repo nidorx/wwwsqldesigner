@@ -65,7 +65,8 @@ public class SQLDesignerServer {
         }
 
         // Allows debug
-        if (System.getProperty("debug") != null) {
+        // java -jar -Ddebugmode=true www-sql-designer-version.jar
+        if ("true".equals(System.getProperty("debugmode"))) {
             logger.setLevel(Level.ALL);
         }
     }
@@ -114,11 +115,24 @@ public class SQLDesignerServer {
         }
 
         public void start() throws IOException, URISyntaxException {
+            // java -jar -Dport=8000
+            final String portProperty = System.getProperty("port");
+            final String port;
+            if (portProperty != null) {
+                port = portProperty;
+            } else {
+                port = "8000";
+            }
+
+            logger.log(Level.INFO, "Starting server: http://localhost:{0}", port);
+
             // Initialize server
-            HttpServer server = HttpServer.create(new InetSocketAddress(8000), 0);
+            HttpServer server = HttpServer.create(new InetSocketAddress(Integer.valueOf(port)), 0);
             server.createContext("/", this);
             server.setExecutor(null);
             server.start();
+
+            logger.log(Level.INFO, "Startup completed");
         }
 
         @Override
