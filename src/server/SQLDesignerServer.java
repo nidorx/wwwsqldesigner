@@ -20,6 +20,7 @@ import java.nio.file.PathMatcher;
 import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
@@ -45,7 +46,13 @@ public class SQLDesignerServer {
 
     private static final Logger logger = Logger.getLogger("www-sql");
 
+    // real path of jar file
+    private static final String REAL_BASE_PATH;
+
+    private static long LAST_MODIFIED_TIME = (new Date()).getTime();
+
     static {
+
         // Default language for output
         Locale.setDefault(new Locale("en", "US"));
 
@@ -55,12 +62,31 @@ public class SQLDesignerServer {
                 "%1$tY-%1$tm-%1$td %1$tH:%1$tM:%1$tS %4$-6s %5$s%6$s%n"
         );
 
+        URI thatClassUri = null;
+        try {
+            thatClassUri = SQLDesignerServer.class.getProtectionDomain().getCodeSource().getLocation().toURI();
+        } catch (URISyntaxException ex) {
+            logger.log(Level.SEVERE, "Unable to determine base path", ex);
+            System.exit(-1);
+        }
+        REAL_BASE_PATH = Paths.get(thatClassUri).getParent().toString();
+
+        // Last Modified Time, for caching
+        try {
+            final FileTime lastModifiedTime = Files.getLastModifiedTime(Paths.get(thatClassUri));
+            if (lastModifiedTime != null) {
+                LAST_MODIFIED_TIME = lastModifiedTime.toMillis();
+            }
+        } catch (IOException ex) {
+            logger.log(Level.SEVERE, "Unable to determine lastModifiedTime", ex);
+        }
+
         // Log to file
         try {
-            final FileHandler logfile = new FileHandler(Paths.get(getJarPath(), "/www-sql-designer.log").toString());
+            final FileHandler logfile = new FileHandler(Paths.get(REAL_BASE_PATH, "/www-sql-designer.log").toString());
             logfile.setFormatter(new SimpleFormatter());
             logger.addHandler(logfile);
-        } catch (IOException | URISyntaxException | SecurityException ex) {
+        } catch (IOException | SecurityException ex) {
             logger.log(Level.SEVERE, "Unable to create logfile", ex);
         }
 
@@ -94,9 +120,8 @@ public class SQLDesignerServer {
         private static Path snapshotsPath;
 
         public WebServer() throws URISyntaxException, IOException {
-            final String jarPath = getJarPath();
-            diagramsPath = Paths.get(jarPath, "/diagrams");
-            snapshotsPath = Paths.get(jarPath, "/snapshots");
+            diagramsPath = Paths.get(REAL_BASE_PATH, "/diagrams");
+            snapshotsPath = Paths.get(REAL_BASE_PATH, "/snapshots");
 
             // Create diagrams directory (if not exists)
             Files.createDirectories(diagramsPath);
@@ -395,18 +420,6 @@ public class SQLDesignerServer {
         private NotFoundException(final String message) {
             super(message);
         }
-    }
-
-    /**
-     * Return real path of jar file
-     *
-     * @return
-     * @throws URISyntaxException
-     */
-    private static String getJarPath() throws URISyntaxException {
-        final URI thatClassUri
-                = SQLDesignerServer.class.getProtectionDomain().getCodeSource().getLocation().toURI();
-        return Paths.get(thatClassUri).getParent().toString();
     }
 
 }
