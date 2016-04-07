@@ -1,9 +1,2 @@
 **/*.class
 **/nbproject/
-/src/build/
-/src/dist/
-/build/*
-/dist/*.log
-/dist/*.lck
-/dist/diagrams/
-/dist/snapshots/
